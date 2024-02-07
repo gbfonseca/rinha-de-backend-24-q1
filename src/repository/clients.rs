@@ -8,6 +8,7 @@ pub struct Clients {
     pub id: i32,
     pub nome: String,
     pub limite: i32,
+    pub saldo_inicial: i32,
 }
 
 #[allow(dead_code)]
@@ -36,6 +37,7 @@ mod tests {
         let first_client = results.get(0).unwrap();
         assert_eq!(first_client.id, 1);
         assert_eq!(first_client.nome, "o barato sai caro");
+        assert_eq!(first_client.saldo_inicial, 0);
     }
 
     pub fn establish_connection() -> PgConnection {

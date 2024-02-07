@@ -1,7 +1,8 @@
 CREATE TABLE clientes (
     id serial primary key,
-    nome varchar,
-    limite integer
+    nome varchar NOT NULL,
+    limite integer NOT NULL,
+    saldo_inicial integer default 0 NOT NULL
 );
 
 DO $$
