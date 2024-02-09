@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Clients {
     pub id: i32,
-    pub nome: String,
     pub limite: i32,
+    pub saldo_inicial: i32,
 }
 
 #[allow(dead_code)]
@@ -54,7 +54,7 @@ mod tests {
         let results = Clients::find(&connection).await;
         let first_client = results.get(0).unwrap();
         assert_eq!(first_client.id, 1);
-        assert_eq!(first_client.nome, "o barato sai caro");
+        assert_eq!(first_client.saldo_inicial, 0);
     }
 
     #[tokio::test]
@@ -63,7 +63,7 @@ mod tests {
         let client = Clients::find_by_id(&client, 1).await.unwrap();
         let client = client.unwrap();
         assert_eq!(client.id, 1);
-        assert_eq!(client.nome, "o barato sai caro");
+        assert_eq!(client.saldo_inicial, 0);
     }
 
     pub async fn establish_connection() -> Result<Client, mongodb::error::Error> {
