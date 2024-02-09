@@ -1,14 +1,14 @@
-use diesel::{Connection, PgConnection};
+use mongodb::{options::ClientOptions, Client};
 
 mod repository;
-pub mod schema;
 #[tokio::main] // By default, tokio_postgres uses the tokio crate as its runtime.
 async fn main() {
     println!("Hello World");
 }
 
-pub fn establish_connection() -> PgConnection {
+pub async fn establish_connection() -> Result<Client, mongodb::error::Error> {
     let database_url = String::from("postgres://admin:123@localhost/rinha");
-    PgConnection::establish(&database_url)
-        .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
+    let client_options = ClientOptions::parse(&database_url).await.unwrap();
+    let client = Client::with_options(client_options);
+    client
 }

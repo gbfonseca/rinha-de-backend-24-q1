@@ -1,13 +1,13 @@
-version: "3"
+version: "3.1"
+
 services:
-  db:
-    image: postgres:latest
-    hostname: db
-    environment:
-      - POSTGRES_PASSWORD=123
-      - POSTGRES_USER=admin
-      - POSTGRES_DB=rinha
+  mongo:
+    image: mongo
+    restart: always
     ports:
-      - "5432:5432"
+      - 27017:27017
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: 123
     volumes:
-      - ./script.sql:/docker-entrypoint-initdb.d/script.sql
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
