@@ -85,4 +85,20 @@ mod tests {
         assert!(resp.limite == 100000);
         assert!(resp.saldo != 0);
     }
+
+    #[actix_web::test]
+    async fn test_client_not_found() {
+        let app = test::init_service(App::new().service(transaction)).await;
+        let req = test::TestRequest::post()
+            .uri("/clientes/6/transacoes")
+            .set_json(json!({
+                "valor": 1000,
+                "tipo" : "c",
+                "descricao" : "descricao"
+            }))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert!(resp.status() == 404);
+    }
 }
