@@ -66,6 +66,13 @@ mod tests {
         assert_eq!(client.saldo_inicial, 0);
     }
 
+    #[tokio::test]
+    async fn should_return_erro_when_client_not_found() {
+        let client = establish_connection().await.unwrap();
+        let client = Clients::find_by_id(&client, 6).await.unwrap();
+        assert!(client.is_none())
+    }
+
     pub async fn establish_connection() -> Result<Client, mongodb::error::Error> {
         let database_url = String::from("mongodb://admin:123@localhost:27017/");
         let client_options = ClientOptions::parse(&database_url).await.unwrap();
