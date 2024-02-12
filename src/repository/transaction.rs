@@ -4,17 +4,16 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Transaction {
-    pub id: Option<String>,
     pub valor: i32,
     pub tipo: String,
     pub descricao: String,
     pub realizada_em: Option<String>,
 }
 
+#[allow(dead_code)]
 impl Transaction {
     pub fn new(valor: i32, tipo: String, descricao: String) -> Transaction {
         let transaction = Transaction {
-            id: None,
             descricao,
             valor,
             tipo,
@@ -22,10 +21,6 @@ impl Transaction {
         };
         transaction
     }
-}
-
-#[allow(dead_code)]
-impl Transaction {
     pub async fn save_transaction(
         client: &Client,
         transaction: Transaction,
@@ -61,7 +56,6 @@ mod tests {
             tipo: String::from("c"),
             valor: 70,
             realizada_em: None,
-            id: None,
         };
 
         Transaction::save_transaction(&connection, transaction)

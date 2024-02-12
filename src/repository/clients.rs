@@ -7,6 +7,7 @@ pub struct Clients {
     pub id: i32,
     pub limite: i32,
     pub saldo_inicial: i32,
+    pub saldo: Option<i32>,
 }
 
 #[allow(dead_code)]
@@ -38,6 +39,20 @@ impl Clients {
         let result = collection.find_one(filter, None).await;
 
         result
+    }
+
+    pub async fn update_saldo(
+        client_database: &Client,
+        client_id: i32,
+        saldo: i32,
+    ) -> Result<mongodb::results::UpdateResult, mongodb::error::Error> {
+        let db = client_database.database("rinha");
+        let filter = doc! {"id": client_id};
+        let update = doc! { "$set": {"saldo": saldo} };
+
+        let collection: Collection<Clients> = db.collection("clientes");
+
+        collection.update_one(filter, update, None).await
     }
 }
 
