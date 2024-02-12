@@ -1,5 +1,6 @@
 use chrono::Utc;
-use mongodb::{bson::doc, Client, Collection};
+use futures::TryStreamExt;
+use mongodb::{bson::doc, options::FindOptions, Client, Collection};
 use serde::{Deserialize, Serialize};
 
 use crate::models::transaction_dto::TransactionDTO;
@@ -44,6 +45,21 @@ impl Transaction {
 
         result
     }
+
+    pub async fn get_last_transactions(client: &Client, client_id: i32) -> Vec<Transaction> {
+        let db = client.database("rinha");
+        let filter = doc! {"client_id": client_id};
+        let find_options = FindOptions::builder().limit(10).build();
+
+        let collection: Collection<Transaction> = db.collection("transaction");
+
+        let cursor = collection
+            .find(filter, find_options)
+            .await
+            .expect("Houve um erro ao buscar clientes");
+
+        cursor.try_collect().await.unwrap_or_else(|_| vec![])
+    }
 }
 
 #[cfg(test)]
@@ -66,6 +82,17 @@ mod tests {
         Transaction::save_transaction(&connection, transaction, 1)
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn should_get_last_transactions() {
+        let connection = establish_connection().await.unwrap();
+
+        let result = Transaction::get_last_transactions(&connection, 1).await;
+
+        let first = result.first().unwrap();
+
+        assert!(first.client_id == 1)
     }
 
     pub async fn establish_connection() -> Result<Client, mongodb::error::Error> {
