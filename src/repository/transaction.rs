@@ -2,28 +2,33 @@ use chrono::Utc;
 use mongodb::{bson::doc, Client, Collection};
 use serde::{Deserialize, Serialize};
 
+use crate::models::transaction_dto::TransactionDTO;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Transaction {
     pub valor: i32,
     pub tipo: String,
     pub descricao: String,
     pub realizada_em: Option<String>,
+    pub client_id: i32,
 }
 
 #[allow(dead_code)]
 impl Transaction {
-    pub fn new(valor: i32, tipo: String, descricao: String) -> Transaction {
+    pub fn new(valor: i32, tipo: String, descricao: String, client_id: i32) -> Transaction {
         let transaction = Transaction {
             descricao,
             valor,
             tipo,
             realizada_em: Some(Utc::now().to_string()),
+            client_id,
         };
         transaction
     }
     pub async fn save_transaction(
         client: &Client,
-        transaction: Transaction,
+        transaction: TransactionDTO,
+        client_id: i32,
     ) -> Result<mongodb::results::InsertOneResult, mongodb::error::Error> {
         let db = client.database("rinha");
         let collection: Collection<Transaction> = db.collection("transaction");
@@ -32,6 +37,7 @@ impl Transaction {
             transaction.valor.to_owned(),
             transaction.tipo.to_owned(),
             transaction.descricao.to_owned(),
+            client_id,
         );
 
         let result = collection.insert_one(transaction, None).await;
@@ -51,14 +57,13 @@ mod tests {
     async fn should_save_transaction() {
         let connection = establish_connection().await.unwrap();
 
-        let transaction = Transaction {
+        let transaction = TransactionDTO {
             descricao: String::from("Teste  unitario"),
             tipo: String::from("c"),
             valor: 70,
-            realizada_em: None,
         };
 
-        Transaction::save_transaction(&connection, transaction)
+        Transaction::save_transaction(&connection, transaction, 1)
             .await
             .unwrap();
     }

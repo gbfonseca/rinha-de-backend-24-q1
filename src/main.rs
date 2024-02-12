@@ -1,4 +1,5 @@
 use actix_web::{post, web, App, HttpResponse, HttpServer};
+use models::transaction_dto::TransactionDTO;
 use models::transaction_result::TransactionResult;
 use mongodb::{options::ClientOptions, Client};
 use repository::clients::Clients;
@@ -15,7 +16,7 @@ async fn main() -> Result<(), std::io::Error> {
 }
 
 #[post("/clientes/{id}/transacoes")]
-async fn transaction(path: web::Path<i32>, payload: web::Json<Transaction>) -> HttpResponse {
+async fn transaction(path: web::Path<i32>, payload: web::Json<TransactionDTO>) -> HttpResponse {
     let connection: Client = establish_connection().await.unwrap();
     let id = path.into_inner();
 
@@ -40,7 +41,7 @@ async fn transaction(path: web::Path<i32>, payload: web::Json<Transaction>) -> H
 
     let current_saldo = client.saldo.unwrap() - payload.valor;
 
-    match Transaction::save_transaction(&connection, payload.0).await {
+    match Transaction::save_transaction(&connection, payload.0, id).await {
         Ok(t) => t,
         Err(_err) => return HttpResponse::UnprocessableEntity().finish(),
     };
