@@ -101,4 +101,20 @@ mod tests {
 
         assert!(resp.status() == 404);
     }
+
+    #[actix_web::test]
+    async fn test_client_less_debit() {
+        let app = test::init_service(App::new().service(transaction)).await;
+        let req = test::TestRequest::post()
+            .uri("/clientes/1/transacoes")
+            .set_json(json!({
+                "valor": 1000,
+                "tipo" : "d",
+                "descricao" : "descricao"
+            }))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert!(resp.status() == 422);
+    }
 }
