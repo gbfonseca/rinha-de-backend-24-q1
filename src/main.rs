@@ -1,25 +1,27 @@
 use actix_web::{get, post, web, App, HttpResponse, HttpServer};
 use chrono::Utc;
+use config::database::connect_database;
 use models::extract::{Extract, Saldo};
 use models::transaction_dto::TransactionDTO;
 use models::transaction_result::TransactionResult;
-use mongodb::{options::ClientOptions, Client};
+use mongodb::Client;
 use repository::clients::Clients;
 use repository::transaction::Transaction;
-
+mod config;
 mod models;
 mod repository;
 #[actix_web::main] // By default, tokio_postgres uses the tokio crate as its runtime.
 async fn main() -> Result<(), std::io::Error> {
+    println!("Rodando em http://0.0.0.0:8080");
     HttpServer::new(|| App::new().service(transaction).service(extract))
-        .bind(("127.0.0.1", 9999))?
+        .bind(("0.0.0.0", 8080))?
         .run()
         .await
 }
 
 #[post("/clientes/{id}/transacoes")]
 async fn transaction(path: web::Path<i32>, payload: web::Json<TransactionDTO>) -> HttpResponse {
-    let connection: Client = establish_connection().await.unwrap();
+    let connection: Client = connect_database().await.unwrap();
     let id = path.into_inner();
 
     let client = match Clients::find_by_id(&connection, id).await {
@@ -37,11 +39,15 @@ async fn transaction(path: web::Path<i32>, payload: web::Json<TransactionDTO>) -
         client.saldo = Some(0)
     }
 
-    if payload.tipo.eq("d") && client.saldo.unwrap() < payload.valor {
+    let current_saldo = client.saldo.unwrap() - payload.valor;
+
+    if payload.tipo.eq("d") && (current_saldo < client.limite * -1) {
         return HttpResponse::UnprocessableEntity().finish();
     }
 
-    let current_saldo = client.saldo.unwrap() - payload.valor;
+    if current_saldo < client.limite * -1 {
+        return HttpResponse::UnprocessableEntity().finish();
+    }
 
     match Transaction::save_transaction(&connection, payload.0, id).await {
         Ok(t) => t,
@@ -60,7 +66,7 @@ async fn transaction(path: web::Path<i32>, payload: web::Json<TransactionDTO>) -
 
 #[get("/clientes/{id}/extrato")]
 async fn extract(path: web::Path<i32>) -> HttpResponse {
-    let connection: Client = establish_connection().await.unwrap();
+    let connection: Client = connect_database().await.unwrap();
     let id = path.into_inner();
 
     let client = match Clients::find_by_id(&connection, id).await {
@@ -86,12 +92,6 @@ async fn extract(path: web::Path<i32>) -> HttpResponse {
     };
 
     HttpResponse::Ok().json(extract)
-}
-pub async fn establish_connection() -> Result<Client, mongodb::error::Error> {
-    let database_url = String::from("mongodb://admin:123@localhost:27017/");
-    let client_options = ClientOptions::parse(&database_url).await.unwrap();
-    let client = Client::with_options(client_options);
-    client
 }
 
 #[cfg(test)]
@@ -119,6 +119,22 @@ mod tests {
     }
 
     #[actix_web::test]
+    async fn test_transaction_limit_ultrapass() {
+        let app = test::init_service(App::new().service(transaction)).await;
+        let req = test::TestRequest::post()
+            .uri("/clientes/1/transacoes")
+            .set_json(json!({
+                "valor": 1000000000,
+                "tipo" : "c",
+                "descricao" : "descricao"
+            }))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert!(resp.status() == 422);
+    }
+
+    #[actix_web::test]
     async fn test_client_not_found() {
         let app = test::init_service(App::new().service(transaction)).await;
         let req = test::TestRequest::post()
@@ -140,7 +156,7 @@ mod tests {
         let req = test::TestRequest::post()
             .uri("/clientes/1/transacoes")
             .set_json(json!({
-                "valor": 1000,
+                "valor": 1000001,
                 "tipo" : "d",
                 "descricao" : "descricao"
             }))
@@ -152,7 +168,17 @@ mod tests {
 
     #[actix_web::test]
     async fn test_get_extract() {
-        let app = test::init_service(App::new().service(extract)).await;
+        let app = test::init_service(App::new().service(extract).service(transaction)).await;
+
+        let req = test::TestRequest::post()
+            .uri("/clientes/1/transacoes")
+            .set_json(json!({
+                "valor": 1000,
+                "tipo" : "c",
+                "descricao" : "descricao"
+            }))
+            .to_request();
+        let _resp = test::call_service(&app, req).await;
 
         let req = test::TestRequest::get()
             .uri("/clientes/1/extrato")

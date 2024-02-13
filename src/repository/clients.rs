@@ -59,13 +59,13 @@ impl Clients {
 #[cfg(test)]
 mod tests {
 
-    use mongodb::{options::ClientOptions, Client};
+    use crate::config::database::connect_database;
 
     use super::*;
 
     #[tokio::test]
     async fn should_find_all_clients() {
-        let connection = establish_connection().await.unwrap();
+        let connection = connect_database().await.unwrap();
         let results = Clients::find(&connection).await;
         let first_client = results.get(0).unwrap();
         assert_eq!(first_client.id, 1);
@@ -74,7 +74,7 @@ mod tests {
 
     #[tokio::test]
     async fn should_find_client_by_id() {
-        let client = establish_connection().await.unwrap();
+        let client = connect_database().await.unwrap();
         let client = Clients::find_by_id(&client, 1).await.unwrap();
         let client = client.unwrap();
         assert_eq!(client.id, 1);
@@ -83,15 +83,8 @@ mod tests {
 
     #[tokio::test]
     async fn should_return_erro_when_client_not_found() {
-        let client = establish_connection().await.unwrap();
+        let client = connect_database().await.unwrap();
         let client = Clients::find_by_id(&client, 6).await.unwrap();
         assert!(client.is_none())
-    }
-
-    pub async fn establish_connection() -> Result<Client, mongodb::error::Error> {
-        let database_url = String::from("mongodb://admin:123@localhost:27017/");
-        let client_options = ClientOptions::parse(&database_url).await.unwrap();
-        let client = Client::with_options(client_options);
-        client
     }
 }
