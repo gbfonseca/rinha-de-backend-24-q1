@@ -1,4 +1,6 @@
-use actix_web::{post, web, App, HttpResponse, HttpServer};
+use actix_web::{get, post, web, App, HttpResponse, HttpServer};
+use chrono::Utc;
+use models::extract::{Extract, Saldo};
 use models::transaction_dto::TransactionDTO;
 use models::transaction_result::TransactionResult;
 use mongodb::{options::ClientOptions, Client};
@@ -9,7 +11,7 @@ mod models;
 mod repository;
 #[actix_web::main] // By default, tokio_postgres uses the tokio crate as its runtime.
 async fn main() -> Result<(), std::io::Error> {
-    HttpServer::new(|| App::new().service(transaction))
+    HttpServer::new(|| App::new().service(transaction).service(extract))
         .bind(("127.0.0.1", 9999))?
         .run()
         .await
@@ -56,6 +58,35 @@ async fn transaction(path: web::Path<i32>, payload: web::Json<TransactionDTO>) -
     HttpResponse::Ok().json(result)
 }
 
+#[get("/clientes/{id}/extrato")]
+async fn extract(path: web::Path<i32>) -> HttpResponse {
+    let connection: Client = establish_connection().await.unwrap();
+    let id = path.into_inner();
+
+    let client = match Clients::find_by_id(&connection, id).await {
+        Ok(c) => c,
+        Err(_err) => return HttpResponse::InternalServerError().finish(),
+    };
+
+    if client.is_none() {
+        return HttpResponse::NotFound().finish();
+    }
+
+    let client = client.unwrap();
+
+    let transactions = Transaction::get_last_transactions(&connection, client.id).await;
+
+    let extract = Extract {
+        saldo: Saldo {
+            limite: client.limite,
+            total: client.saldo.unwrap_or_else(|| 0),
+            data_extrato: Utc::now().to_string(),
+        },
+        ultimas_transacoes: transactions,
+    };
+
+    HttpResponse::Ok().json(extract)
+}
 pub async fn establish_connection() -> Result<Client, mongodb::error::Error> {
     let database_url = String::from("mongodb://admin:123@localhost:27017/");
     let client_options = ClientOptions::parse(&database_url).await.unwrap();
@@ -117,5 +148,19 @@ mod tests {
         let resp = test::call_service(&app, req).await;
 
         assert!(resp.status() == 422);
+    }
+
+    #[actix_web::test]
+    async fn test_get_extract() {
+        let app = test::init_service(App::new().service(extract)).await;
+
+        let req = test::TestRequest::get()
+            .uri("/clientes/1/extrato")
+            .to_request();
+
+        let resp: Extract = test::call_and_read_body_json(&app, req).await;
+
+        assert!(resp.saldo.limite == 100000);
+        assert!(resp.saldo.total != 0);
     }
 }
