@@ -9,7 +9,7 @@ pub struct Extract {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Saldo {
-    pub total: i32,
+    pub total: i64,
     pub data_extrato: String,
-    pub limite: i32,
+    pub limite: i64,
 }

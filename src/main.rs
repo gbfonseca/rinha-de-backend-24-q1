@@ -1,3 +1,4 @@
+use actix_web::web::Data;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer};
 use chrono::Utc;
 use config::database::connect_database;
@@ -10,21 +11,36 @@ use repository::transaction::Transaction;
 mod config;
 mod models;
 mod repository;
+
 #[actix_web::main] // By default, tokio_postgres uses the tokio crate as its runtime.
 async fn main() -> Result<(), std::io::Error> {
+    let connection: Client = connect_database().await.unwrap();
+    let db_data = Data::new(connection);
     println!("Rodando em http://0.0.0.0:8080");
-    HttpServer::new(|| App::new().service(transaction).service(extract))
-        .bind(("0.0.0.0", 8080))?
-        .run()
-        .await
+    HttpServer::new(move || {
+        App::new()
+            .app_data(db_data.clone())
+            .service(transaction)
+            .service(extract)
+    })
+    .bind(("0.0.0.0", 8080))?
+    .run()
+    .await
 }
 
 #[post("/clientes/{id}/transacoes")]
-async fn transaction(path: web::Path<i32>, payload: web::Json<TransactionDTO>) -> HttpResponse {
-    let connection: Client = connect_database().await.unwrap();
+async fn transaction(
+    path: web::Path<i64>,
+    payload: web::Json<TransactionDTO>,
+    connection: Data<Client>,
+) -> HttpResponse {
     let id = path.into_inner();
 
-    let client = match Clients::find_by_id(&connection, id).await {
+    if payload.descricao.len() > 10 {
+        return HttpResponse::UnprocessableEntity().finish();
+    }
+
+    let client = match Clients::find_by_id(connection.to_owned(), id).await {
         Ok(c) => c,
         Err(_err) => return HttpResponse::InternalServerError().finish(),
     };
@@ -39,22 +55,28 @@ async fn transaction(path: web::Path<i32>, payload: web::Json<TransactionDTO>) -
         client.saldo = Some(0)
     }
 
-    let current_saldo = client.saldo.unwrap() - payload.valor;
+    let transaction_value = if payload.tipo.eq("d") {
+        -payload.valor
+    } else {
+        payload.valor
+    };
 
-    if payload.tipo.eq("d") && (current_saldo < client.limite * -1) {
+    let current_saldo = transaction_value + client.saldo.unwrap();
+
+    println!("SALDO: {:?}", client.saldo.unwrap());
+    println!("SALDO ATUAL: {:?}", current_saldo);
+    println!("LIMITE: {:?}", client.limite);
+
+    if current_saldo < -client.limite || transaction_value % 1 != 0 {
         return HttpResponse::UnprocessableEntity().finish();
     }
 
-    if current_saldo < client.limite * -1 {
-        return HttpResponse::UnprocessableEntity().finish();
-    }
-
-    match Transaction::save_transaction(&connection, payload.0, id).await {
+    match Transaction::save_transaction(connection.to_owned(), payload.0, id).await {
         Ok(t) => t,
         Err(_err) => return HttpResponse::UnprocessableEntity().finish(),
     };
 
-    let _update_saldo = Clients::update_saldo(&connection, client.id, current_saldo).await;
+    let _update_saldo = Clients::update_saldo(connection, client.id, current_saldo).await;
 
     let result = TransactionResult {
         limite: client.limite,
@@ -65,11 +87,10 @@ async fn transaction(path: web::Path<i32>, payload: web::Json<TransactionDTO>) -
 }
 
 #[get("/clientes/{id}/extrato")]
-async fn extract(path: web::Path<i32>) -> HttpResponse {
-    let connection: Client = connect_database().await.unwrap();
+async fn extract(path: web::Path<i64>, connection: Data<Client>) -> HttpResponse {
     let id = path.into_inner();
 
-    let client = match Clients::find_by_id(&connection, id).await {
+    let client = match Clients::find_by_id(connection.to_owned(), id).await {
         Ok(c) => c,
         Err(_err) => return HttpResponse::InternalServerError().finish(),
     };
@@ -80,7 +101,7 @@ async fn extract(path: web::Path<i32>) -> HttpResponse {
 
     let client = client.unwrap();
 
-    let transactions = Transaction::get_last_transactions(&connection, client.id).await;
+    let transactions = Transaction::get_last_transactions(connection.to_owned(), client.id).await;
 
     let extract = Extract {
         saldo: Saldo {
@@ -101,9 +122,13 @@ mod tests {
 
     use super::*;
 
+    mod common;
+
     #[actix_web::test]
     async fn test_transaction_post() {
-        let app = test::init_service(App::new().service(transaction)).await;
+        let connection: Client = connect_database().await.unwrap();
+        let db_data = Data::new(connection);
+        let app = test::init_service(App::new().app_data(db_data).service(transaction)).await;
         let req = test::TestRequest::post()
             .uri("/clientes/1/transacoes")
             .set_json(json!({
@@ -116,27 +141,14 @@ mod tests {
 
         assert!(resp.limite == 100000);
         assert!(resp.saldo != 0);
-    }
-
-    #[actix_web::test]
-    async fn test_transaction_limit_ultrapass() {
-        let app = test::init_service(App::new().service(transaction)).await;
-        let req = test::TestRequest::post()
-            .uri("/clientes/1/transacoes")
-            .set_json(json!({
-                "valor": 1000000000,
-                "tipo" : "c",
-                "descricao" : "descricao"
-            }))
-            .to_request();
-        let resp = test::call_service(&app, req).await;
-
-        assert!(resp.status() == 422);
+        let _unused = common::after().await;
     }
 
     #[actix_web::test]
     async fn test_client_not_found() {
-        let app = test::init_service(App::new().service(transaction)).await;
+        let connection: Client = connect_database().await.unwrap();
+        let db_data = Data::new(connection);
+        let app = test::init_service(App::new().app_data(db_data).service(transaction)).await;
         let req = test::TestRequest::post()
             .uri("/clientes/6/transacoes")
             .set_json(json!({
@@ -148,11 +160,14 @@ mod tests {
         let resp = test::call_service(&app, req).await;
 
         assert!(resp.status() == 404);
+        let _unused = common::after().await;
     }
 
     #[actix_web::test]
     async fn test_client_less_debit() {
-        let app = test::init_service(App::new().service(transaction)).await;
+        let connection: Client = connect_database().await.unwrap();
+        let db_data = Data::new(connection);
+        let app = test::init_service(App::new().app_data(db_data).service(transaction)).await;
         let req = test::TestRequest::post()
             .uri("/clientes/1/transacoes")
             .set_json(json!({
@@ -163,12 +178,23 @@ mod tests {
             .to_request();
         let resp = test::call_service(&app, req).await;
 
+        println!("{:?}", resp);
+
         assert!(resp.status() == 422);
+        let _unused = common::after().await;
     }
 
     #[actix_web::test]
     async fn test_get_extract() {
-        let app = test::init_service(App::new().service(extract).service(transaction)).await;
+        let connection: Client = connect_database().await.unwrap();
+        let db_data = Data::new(connection);
+        let app = test::init_service(
+            App::new()
+                .app_data(db_data)
+                .service(extract)
+                .service(transaction),
+        )
+        .await;
 
         let req = test::TestRequest::post()
             .uri("/clientes/1/transacoes")

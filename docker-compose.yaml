@@ -15,8 +15,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.6"
-          memory: "200MB"
+          cpus: "0.10"
+          memory: "100MB"
 
   api02:
     <<: *api
@@ -38,7 +38,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.17"
+          cpus: "0.10"
           memory: "10MB"
   mongo-database:
     image: mongo:latest
@@ -49,8 +49,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.13"
-          memory: "140MB"
+          cpus: "1.20"
+          memory: "340MB"
 networks:
   default:
     driver: bridge
