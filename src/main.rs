@@ -15,11 +15,11 @@ mod repository;
 #[actix_web::main] // By default, tokio_postgres uses the tokio crate as its runtime.
 async fn main() -> Result<(), std::io::Error> {
     let connection: Client = connect_database().await.unwrap();
-    let db_data = Data::new(connection);
+    let connection_data = Data::new(connection);
     println!("Rodando em http://0.0.0.0:8080");
     HttpServer::new(move || {
         App::new()
-            .app_data(db_data.clone())
+            .app_data(connection_data.clone())
             .service(transaction)
             .service(extract)
     })
