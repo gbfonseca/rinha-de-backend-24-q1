@@ -45,11 +45,11 @@ impl Clients {
     pub async fn update_saldo(
         client_database: Data<Client>,
         client_id: i64,
-        saldo: i64,
+        value: i64,
     ) -> Result<mongodb::results::UpdateResult, mongodb::error::Error> {
         let db = client_database.database("rinha");
         let filter = doc! {"id": client_id};
-        let update = doc! { "$set": {"saldo": saldo} };
+        let update = doc! { "$inc": {"saldo": value} };
 
         let collection: Collection<Clients> = db.collection("clientes");
 

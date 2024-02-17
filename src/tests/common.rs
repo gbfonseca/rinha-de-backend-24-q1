@@ -23,9 +23,9 @@ async fn insert_document(
 
     // Criar um documento  para inserção
     let document = Clients {
-        saldo_inicial: saldo_inicial,
-        limite: limite,
-        id: id,
+        saldo_inicial,
+        limite,
+        id,
         saldo: Some("0".parse::<i64>().unwrap()),
     };
 

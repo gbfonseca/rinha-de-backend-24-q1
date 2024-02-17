@@ -1,5 +1,8 @@
 use actix_web::web::Data;
-use actix_web::{get, post, web, App, HttpResponse, HttpServer};
+
+use actix_web::{error, get, post, web, App, HttpResponse, HttpServer, Result};
+
+use actix_web_validator::{Json, JsonConfig};
 use chrono::Utc;
 use config::database::connect_database;
 use models::extract::{Extract, Saldo};
@@ -16,9 +19,16 @@ mod repository;
 async fn main() -> Result<(), std::io::Error> {
     let connection: Client = connect_database().await.unwrap();
     let connection_data = Data::new(connection);
+
+    let json_config = JsonConfig::default().error_handler(|err, _req| {
+        error::InternalError::from_response(err, HttpResponse::UnprocessableEntity().finish())
+            .into()
+    });
+
     println!("Rodando em http://0.0.0.0:8080");
     HttpServer::new(move || {
         App::new()
+            .app_data(json_config.to_owned())
             .app_data(connection_data.clone())
             .service(transaction)
             .service(extract)
@@ -31,14 +41,10 @@ async fn main() -> Result<(), std::io::Error> {
 #[post("/clientes/{id}/transacoes")]
 async fn transaction(
     path: web::Path<i64>,
-    payload: web::Json<TransactionDTO>,
+    payload: Json<TransactionDTO>,
     connection: Data<Client>,
 ) -> HttpResponse {
     let id = path.into_inner();
-
-    if payload.descricao.len() > 10 {
-        return HttpResponse::UnprocessableEntity().finish();
-    }
 
     let client = match Clients::find_by_id(connection.to_owned(), id).await {
         Ok(c) => c,
@@ -63,10 +69,6 @@ async fn transaction(
 
     let current_saldo = transaction_value + client.saldo.unwrap();
 
-    println!("SALDO: {:?}", client.saldo.unwrap());
-    println!("SALDO ATUAL: {:?}", current_saldo);
-    println!("LIMITE: {:?}", client.limite);
-
     if current_saldo < -client.limite || transaction_value % 1 != 0 {
         return HttpResponse::UnprocessableEntity().finish();
     }
@@ -76,7 +78,7 @@ async fn transaction(
         Err(_err) => return HttpResponse::UnprocessableEntity().finish(),
     };
 
-    let _update_saldo = Clients::update_saldo(connection, client.id, current_saldo).await;
+    let _update_saldo = Clients::update_saldo(connection, client.id, transaction_value).await;
 
     let result = TransactionResult {
         limite: client.limite,
@@ -117,12 +119,11 @@ async fn extract(path: web::Path<i64>, connection: Data<Client>) -> HttpResponse
 
 #[cfg(test)]
 mod tests {
-    use actix_web::{test, App};
-    use serde_json::json;
-
     use super::*;
-
+    use actix_web::{error, test};
+    use serde_json::json;
     mod common;
+    use actix_web_validator::JsonConfig;
 
     #[actix_web::test]
     async fn test_transaction_post() {
@@ -141,6 +142,64 @@ mod tests {
 
         assert!(resp.limite == 100000);
         assert!(resp.saldo != 0);
+        let _unused = common::after().await;
+    }
+
+    #[actix_web::test]
+    async fn test_block_floating_value() {
+        let connection: Client = connect_database().await.unwrap();
+        let db_data = Data::new(connection);
+        let json_config = JsonConfig::default().error_handler(|err, _req| {
+            error::InternalError::from_response(err, HttpResponse::UnprocessableEntity().finish())
+                .into()
+        });
+        let app = test::init_service(
+            App::new()
+                .app_data(json_config)
+                .app_data(db_data)
+                .service(transaction),
+        )
+        .await;
+        let req = test::TestRequest::post()
+            .uri("/clientes/1/transacoes")
+            .set_json(json!({
+                "valor": 1.2,
+                "tipo" : "c",
+                "descricao" : "descricao"
+            }))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert!(resp.status() == 422);
+        let _unused = common::after().await;
+    }
+
+    #[actix_web::test]
+    async fn test_block_tipo() {
+        let connection: Client = connect_database().await.unwrap();
+        let db_data = Data::new(connection);
+        let json_config = JsonConfig::default().error_handler(|err, _req| {
+            error::InternalError::from_response(err, HttpResponse::UnprocessableEntity().finish())
+                .into()
+        });
+        let app = test::init_service(
+            App::new()
+                .app_data(json_config)
+                .app_data(db_data)
+                .service(transaction),
+        )
+        .await;
+        let req = test::TestRequest::post()
+            .uri("/clientes/1/transacoes")
+            .set_json(json!({
+                "valor": 1,
+                "tipo" : "x",
+                "descricao" : "descricao"
+            }))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert!(resp.status() == 422);
         let _unused = common::after().await;
     }
 
@@ -178,8 +237,6 @@ mod tests {
             .to_request();
         let resp = test::call_service(&app, req).await;
 
-        println!("{:?}", resp);
-
         assert!(resp.status() == 422);
         let _unused = common::after().await;
     }
@@ -214,5 +271,6 @@ mod tests {
 
         assert!(resp.saldo.limite == 100000);
         assert!(resp.saldo.total != 0);
+        let _unused = common::after().await;
     }
 }
