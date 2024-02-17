@@ -14,7 +14,7 @@ async fn insert_data(client: &Client) -> Result<(), Box<dyn std::error::Error>> 
 
 async fn insert_document(
     client: &Client,
-    saldo_inicial: i64,
+    saldo: i64,
     limite: i64,
     id: i64,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -22,12 +22,7 @@ async fn insert_document(
     let collection = client.database("rinha").collection::<Clients>("clientes");
 
     // Criar um documento  para inserção
-    let document = Clients {
-        saldo_inicial,
-        limite,
-        id,
-        saldo: Some("0".parse::<i64>().unwrap()),
-    };
+    let document = Clients { saldo, limite, id };
 
     // Inserir o documento na coleção
     collection.insert_one(document, None).await?;

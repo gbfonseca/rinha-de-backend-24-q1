@@ -55,11 +55,7 @@ async fn transaction(
         return HttpResponse::NotFound().finish();
     }
 
-    let mut client = client.unwrap();
-
-    if client.saldo.is_none() {
-        client.saldo = Some(0)
-    }
+    let client = client.unwrap();
 
     let transaction_value = if payload.tipo.eq("d") {
         -payload.valor
@@ -67,7 +63,7 @@ async fn transaction(
         payload.valor
     };
 
-    let current_saldo = transaction_value + client.saldo.unwrap();
+    let current_saldo = transaction_value + client.saldo;
 
     if current_saldo < -client.limite || transaction_value % 1 != 0 {
         return HttpResponse::UnprocessableEntity().finish();
@@ -108,7 +104,7 @@ async fn extract(path: web::Path<i64>, connection: Data<Client>) -> HttpResponse
     let extract = Extract {
         saldo: Saldo {
             limite: client.limite,
-            total: client.saldo.unwrap_or_else(|| 0),
+            total: client.saldo,
             data_extrato: Utc::now().to_string(),
         },
         ultimas_transacoes: transactions,

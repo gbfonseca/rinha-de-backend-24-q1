@@ -7,8 +7,7 @@ use serde::{Deserialize, Serialize};
 pub struct Clients {
     pub id: i64,
     pub limite: i64,
-    pub saldo_inicial: i64,
-    pub saldo: Option<i64>,
+    pub saldo: i64,
 }
 
 #[allow(dead_code)]
@@ -70,7 +69,7 @@ mod tests {
         let results = Clients::find(connection).await;
         let first_client = results.get(0).unwrap();
         assert_eq!(first_client.id, 1);
-        assert_eq!(first_client.saldo_inicial, 0);
+        assert_eq!(first_client.saldo, 0);
     }
 
     #[tokio::test]
@@ -79,7 +78,7 @@ mod tests {
         let client = Clients::find_by_id(client, 1).await.unwrap();
         let client = client.unwrap();
         assert_eq!(client.id, 1);
-        assert_eq!(client.saldo_inicial, 0);
+        assert_eq!(client.saldo, 0);
     }
 
     #[tokio::test]
